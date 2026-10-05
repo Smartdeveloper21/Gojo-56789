@@ -732,7 +732,8 @@ def admin_panel_text(d: dict) -> str:
     for fb_id, fb_data in FB_DEVICE_COUNTS.items():
         age = int(time.time() - fb_data.get("last_update", 0))
         status = em(EMOJI_CHECK, "🟢") if age < 60 else em(EMOJI_WARNING, "🟡") if age < 300 else em(EMOJI_CROSS, "🔴")
-        fb_lines.append(f"  {status} {fb_data['label'][:20]}: {fb_data['online']} ᴏɴʟɪɴᴇ")
+        safe_label = fb_data['label'][:20].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+fb_lines.append(f"  {status} {safe_label}: {fb_data['online']} ᴏɴʟɪɴᴇ")
     fb_summary = "\n".join(fb_lines) if fb_lines else f"  {em(EMOJI_WARNING, '😴')} ɴᴏ ᴅᴀᴛᴀ"
 
     protected_count = len(PROTECTED_NUMBERS)
@@ -1015,20 +1016,27 @@ async def cmd_start(msg: Message, state: FSMContext):
 
     await send_random_video(msg.bot, msg.chat.id, caption=f"{em(EMOJI_ROCKET, '🚀')} Welcome to SMS Blast Bot!\nOwner: {SUPER_ADMIN_NAME}")
 
-    if is_owner(uid, d):
-        await msg.answer(owner_panel_text(d), reply_markup=owner_kb(d), parse_mode="HTML")
-        return
-    if is_admin(uid, d):
-        await msg.answer(admin_panel_text(d), reply_markup=admin_kb(d), parse_mode="HTML")
-        return
-    if is_banned(uid, d):
-        await msg.answer(f"{em(EMOJI_CROSS, '🚫')} <b>Aapko ban kar diya gaya hai.</b>\nAdmin se contact karein.", parse_mode="HTML")
-        return
-    if not can_use(uid, d):
-        await msg.answer(f"{em(EMOJI_CROSS, '⛔')} <b>Access nahi hai!</b>\n\nOwner se approval lein.", parse_mode="HTML")
-        return
+        try:
+        if is_owner(uid, d):
+            await msg.answer(owner_panel_text(d), reply_markup=owner_kb(d), parse_mode="HTML", disable_web_page_preview=True)
+            return
+        if is_admin(uid, d):
+            await msg.answer(admin_panel_text(d), reply_markup=admin_kb(d), parse_mode="HTML", disable_web_page_preview=True)
+            return
+        if is_banned(uid, d):
+            await msg.answer(f"{em(EMOJI_CROSS, '🚫')} <b>Aapko ban kar diya gaya hai.</b>", parse_mode="HTML")
+            return
+        if not can_use(uid, d):
+            await msg.answer(f"{em(EMOJI_CROSS, '⛔')} <b>Access nahi hai!</b>", parse_mode="HTML")
+            return
 
-    await msg.answer(user_home_text(uid, d), reply_markup=user_kb(), parse_mode="HTML")
+        await msg.answer(user_home_text(uid, d), reply_markup=user_kb(), parse_mode="HTML", disable_web_page_preview=True)
+    except TelegramBadRequest as e:
+        log.error(f"Panel HTML error: {e}")
+        import re
+        plain = re.sub(r"<[^>]+>", "", owner_panel_text(d) if is_owner(uid, d) else admin_panel_text(d) if is_admin(uid, d) else user_home_text(uid, d))
+        kb_fallback = owner_kb(d) if is_owner(uid, d) else admin_kb(d) if is_admin(uid, d) else user_kb()
+        await msg.answer(plain[:4000], reply_markup=kb_fallback)
 
 @R.callback_query(F.data == "fj:check")
 async def fj_check(cq: CallbackQuery, state: FSMContext):
@@ -2197,10 +2205,16 @@ async def owner_home(cq: CallbackQuery, state: FSMContext):
     if not is_owner(cq.from_user.id, d):
         await cq.answer("🚫 Owner Only!", show_alert=True)
         return
-    try:
-        await cq.message.edit_text(owner_panel_text(d), reply_markup=owner_kb(d), parse_mode="HTML")
-    except TelegramBadRequest:
-        pass
+        try:
+        await cq.message.edit_text(owner_panel_text(d), reply_markup=owner_kb(d), parse_mode="HTML", disable_web_page_preview=True)
+    except TelegramBadRequest as e:
+        log.error(f"owner_home edit failed: {e}")
+        import re
+        plain = re.sub(r"<[^>]+>", "", owner_panel_text(d))
+        try:
+            await cq.message.edit_text(plain[:4000], reply_markup=owner_kb(d))
+        except Exception as e2:
+            log.error(f"owner_home fallback failed: {e2}")
 
 @R.callback_query(F.data == "owner:fb:menu")
 async def owner_fb_menu(cq: CallbackQuery, state: FSMContext):
@@ -2768,9 +2782,16 @@ async def admin_home(cq: CallbackQuery, state: FSMContext):
     if not is_admin(cq.from_user.id, d):
         await cq.answer("🚫 Admin Only!", show_alert=True)
         return
-    try:
-        await cq.message.edit_text(admin_panel_text(d), reply_markup=admin_kb(d), parse_mode="HTML")
-    except TelegramBadRequest: pass
+        try:
+        await cq.message.edit_text(admin_panel_text(d), reply_markup=admin_kb(d), parse_mode="HTML", disable_web_page_preview=True)
+    except TelegramBadRequest as e:
+        log.error(f"admin_home edit failed: {e}")
+        import re
+        plain = re.sub(r"<[^>]+>", "", admin_panel_text(d))
+        try:
+            await cq.message.edit_text(plain[:4000], reply_markup=admin_kb(d))
+        except Exception as e2:
+            log.error(f"admin_home fallback failed: {e2}")
 
 @R.callback_query(F.data == "admin:stats")
 async def admin_stats_cb(cq: CallbackQuery, state: FSMContext):
