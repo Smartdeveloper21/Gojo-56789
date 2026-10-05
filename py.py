@@ -688,13 +688,13 @@ def owner_panel_text(d: dict) -> str:
     active_sessions = len([s for s in USER_SESSIONS.values() if s.task and not s.task.done()])
     scan_info = get_scan_status()
 
-        fb_lines = []
+    fb_lines = []
     for fb_id, fb_data in FB_DEVICE_COUNTS.items():
         age = int(time.time() - fb_data.get("last_update", 0))
         status = em(EMOJI_CHECK, "🟢") if age < 60 else em(EMOJI_WARNING, "🟡") if age < 300 else em(EMOJI_CROSS, "🔴")
         safe_label = fb_data['label'][:20].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         fb_lines.append(f"  {status} {safe_label}: {fb_data['online']} ᴏɴʟɪɴᴇ")
-        fb_summary = "\n".join(fb_lines) if fb_lines else f"  {em(EMOJI_WARNING, '😴')} ɴᴏ ᴅᴀᴛᴀ"
+    fb_summary = "\n".join(fb_lines) if fb_lines else f"  {em(EMOJI_WARNING, '😴')} ɴᴏ ᴅᴀᴛᴀ"
 
     protected_count = len(PROTECTED_NUMBERS)
 
@@ -733,8 +733,8 @@ def admin_panel_text(d: dict) -> str:
         age = int(time.time() - fb_data.get("last_update", 0))
         status = em(EMOJI_CHECK, "🟢") if age < 60 else em(EMOJI_WARNING, "🟡") if age < 300 else em(EMOJI_CROSS, "🔴")
         safe_label = fb_data['label'][:20].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-fb_lines.append(f"  {status} {safe_label}: {fb_data['online']} ᴏɴʟɪɴᴇ")
-        fb_summary = "\n".join(fb_lines) if fb_lines else f"  {em(EMOJI_WARNING, '😴')} ɴᴏ ᴅᴀᴛᴀ"
+        fb_lines.append(f"  {status} {safe_label}: {fb_data['online']} ᴏɴʟɪɴᴇ")
+    fb_summary = "\n".join(fb_lines) if fb_lines else f"  {em(EMOJI_WARNING, '😴')} ɴᴏ ᴅᴀᴛᴀ"
 
     protected_count = len(PROTECTED_NUMBERS)
 
