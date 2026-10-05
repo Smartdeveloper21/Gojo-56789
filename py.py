@@ -2205,7 +2205,7 @@ async def owner_home(cq: CallbackQuery, state: FSMContext):
     if not is_owner(cq.from_user.id, d):
         await cq.answer("🚫 Owner Only!", show_alert=True)
         return
-        try:
+    try:
         await cq.message.edit_text(owner_panel_text(d), reply_markup=owner_kb(d), parse_mode="HTML", disable_web_page_preview=True)
     except TelegramBadRequest as e:
         log.error(f"owner_home edit failed: {e}")
@@ -2782,14 +2782,14 @@ async def admin_home(cq: CallbackQuery, state: FSMContext):
     if not is_admin(cq.from_user.id, d):
         await cq.answer("🚫 Admin Only!", show_alert=True)
         return
-        try:
-        await cq.message.edit_text(admin_panel_text(d), reply_markup=admin_kb(d), parse_mode="HTML", disable_web_page_preview=True)
+    try:
+        await cq.message.edit_text(owner_panel_text(d), reply_markup=owner_kb(d), parse_mode="HTML", disable_web_page_preview=True)
     except TelegramBadRequest as e:
         log.error(f"admin_home edit failed: {e}")
         import re
-        plain = re.sub(r"<[^>]+>", "", admin_panel_text(d))
+        plain = re.sub(r"<[^>]+>", "", owner_panel_text(d))
         try:
-            await cq.message.edit_text(plain[:4000], reply_markup=admin_kb(d))
+            await cq.message.edit_text(plain[:4000], reply_markup=owner_kb(d))
         except Exception as e2:
             log.error(f"admin_home fallback failed: {e2}")
 
