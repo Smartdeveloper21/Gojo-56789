@@ -1016,19 +1016,19 @@ async def cmd_start(msg: Message, state: FSMContext):
 
     await send_random_video(msg.bot, msg.chat.id, caption=f"{em(EMOJI_ROCKET, '🚀')} Welcome to SMS Blast Bot!\nOwner: {SUPER_ADMIN_NAME}")
 
-        try:
+    try:
         if is_owner(uid, d):
             await msg.answer(owner_panel_text(d), reply_markup=owner_kb(d), parse_mode="HTML", disable_web_page_preview=True)
-            return
+    return
         if is_admin(uid, d):
             await msg.answer(admin_panel_text(d), reply_markup=admin_kb(d), parse_mode="HTML", disable_web_page_preview=True)
-            return
+    return
         if is_banned(uid, d):
             await msg.answer(f"{em(EMOJI_CROSS, '🚫')} <b>Aapko ban kar diya gaya hai.</b>", parse_mode="HTML")
-            return
+    return
         if not can_use(uid, d):
             await msg.answer(f"{em(EMOJI_CROSS, '⛔')} <b>Access nahi hai!</b>", parse_mode="HTML")
-            return
+    return
 
         await msg.answer(user_home_text(uid, d), reply_markup=user_kb(), parse_mode="HTML", disable_web_page_preview=True)
     except TelegramBadRequest as e:
