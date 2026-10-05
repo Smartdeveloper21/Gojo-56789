@@ -692,7 +692,8 @@ def owner_panel_text(d: dict) -> str:
     for fb_id, fb_data in FB_DEVICE_COUNTS.items():
         age = int(time.time() - fb_data.get("last_update", 0))
         status = em(EMOJI_CHECK, "🟢") if age < 60 else em(EMOJI_WARNING, "🟡") if age < 300 else em(EMOJI_CROSS, "🔴")
-        fb_lines.append(f"  {status} {fb_data['label'][:20]}: {fb_data['online']} ᴏɴʟɪɴᴇ")
+        safe_label = fb_data['label'][:20].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+fb_lines.append(f"  {status} {safe_label}: {fb_data['online']} ᴏɴʟɪɴᴇ")
     fb_summary = "\n".join(fb_lines) if fb_lines else f"  {em(EMOJI_WARNING, '😴')} ɴᴏ ᴅᴀᴛᴀ"
 
     protected_count = len(PROTECTED_NUMBERS)
