@@ -1,176 +1,103 @@
 import importlib.util
-import os
-import sys
 import asyncio
-import functools
 import logging
+import sys
 from pathlib import Path
 
-# Setup logging for debugging
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("sitecustomize")
 
 
-def _apply_start_panel_fix():
-    """Apply compatibility fixes to blastbot_py module."""
+def _load_bot_module():
     py_path = Path(__file__).resolve().with_name("py.py")
     if not py_path.exists():
-        logger.warning(f"py.py not found at {py_path}")
-        return
+        return None
 
     try:
         spec = importlib.util.spec_from_file_location("blastbot_py", py_path)
         if spec is None or spec.loader is None:
-            logger.error("Failed to create spec for blastbot_py")
-            return
-
+            return None
         mod = importlib.util.module_from_spec(spec)
         sys.modules.setdefault("blastbot_py", mod)
         spec.loader.exec_module(mod)
-        logger.info("Successfully loaded blastbot_py module")
-
+        return mod
     except Exception as e:
-        logger.error(f"Error loading blastbot_py: {e}", exc_info=True)
-        return
-
-    # Patch send_fire_effect_private
-    _patch_fire_effect(mod)
-
-    # Patch panel text functions
-    _patch_panel_functions(mod)
-
-    logger.info("All patches applied successfully")
+        logger.warning("Failed to load py.py: %s", e)
+        return None
 
 
-def _patch_fire_effect(mod):
-    """Safely patch the send_fire_effect_private function."""
-    original_fire = getattr(mod, "send_fire_effect_private", None)
-    if original_fire is None:
-        logger.warning("send_fire_effect_private not found in module")
-        return
-
-    # Check if original function is async
-    is_async = asyncio.iscoroutinefunction(original_fire)
-
-    def safe_fire_sync(bot, chat_id):
-        """Synchronous wrapper for fire effect."""
-        try:
-            d = mod.load()
-            allowed = {mod.MAIN_OWNER, *mod.SUPER_ADMINS, *(d.get("owners", [])), *(d.get("admins", []))}
-            if chat_id in allowed:
-                return None
-        except Exception as e:
-            logger.error(f"Error in safe_fire_sync: {e}")
-            pass
-        return original_fire(bot, chat_id)
-
-    async def safe_fire_async(bot, chat_id):
-        """Asynchronous wrapper for fire effect."""
-        try:
-            d = mod.load()
-            allowed = {mod.MAIN_OWNER, *mod.SUPER_ADMINS, *(d.get("owners", [])), *(d.get("admins", []))}
-            if chat_id in allowed:
-                return None
-        except Exception as e:
-            logger.error(f"Error in safe_fire_async: {e}")
-            pass
-
-        if is_async:
-            return await original_fire(bot, chat_id)
-        else:
-            return original_fire(bot, chat_id)
-
-    # Apply the appropriate wrapper
+def _resolve_panel_data(mod, d_or_uid=None, d=None):
+    if isinstance(d_or_uid, dict):
+        return d_or_uid
+    if isinstance(d, dict):
+        return d
     try:
-        if is_async:
-            mod.send_fire_effect_private = safe_fire_async
-        else:
-            mod.send_fire_effect_private = safe_fire_sync
-        logger.info(f"Patched send_fire_effect_private ({'async' if is_async else 'sync'})")
-    except Exception as e:
-        logger.error(f"Error patching send_fire_effect_private: {e}", exc_info=True)
+        return mod.load()
+    except Exception:
+        return {}
 
 
 def _patch_panel_functions(mod):
-    """Safely patch panel text functions with proper backwards compatibility."""
-    
-    # Patch owner_panel_text
-    _patch_single_function(mod, "owner_panel_text", "owner_panel_compat")
-    
-    # Patch admin_panel_text
-    _patch_single_function(mod, "admin_panel_text", "admin_panel_compat")
+    for name in ("owner_panel_text", "admin_panel_text"):
+        original = getattr(mod, name, None)
+        if original is None:
+            continue
+
+        def make_compat(original_func):
+            def wrapper(*args, **kwargs):
+                try:
+                    if len(args) >= 2:
+                        return original_func(*args, **kwargs)
+                    if len(args) == 1:
+                        value = args[0]
+                        if isinstance(value, dict):
+                            return original_func(value)
+                        data = _resolve_panel_data(mod, value, None)
+                        return original_func(data)
+                    if kwargs:
+                        return original_func(**kwargs)
+                    data = _resolve_panel_data(mod, None, None)
+                    return original_func(data)
+                except TypeError:
+                    try:
+                        return original_func(*args, **kwargs)
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+                return ""
+
+            return wrapper
+
+        setattr(mod, name, make_compat(original))
 
 
-def _patch_single_function(mod, original_name, compat_name):
-    """Patch a single panel function with proper signature handling."""
-    original_func = getattr(mod, original_name, None)
-    if original_func is None:
-        logger.warning(f"{original_name} not found in module")
+def _patch_fire_effect(mod):
+    original = getattr(mod, "send_fire_effect_private", None)
+    if original is None:
         return
 
-    is_async = asyncio.iscoroutinefunction(original_func)
-
-    def compat_wrapper_sync(*args, **kwargs):
-        """Handle both old (uid) and new (dict) signatures for sync functions."""
+    async def safe_fire(bot, chat_id):
         try:
-            # Try calling with first positional argument (should work for both cases)
-            if len(args) == 1:
-                return original_func(args[0])
-            elif len(args) >= 2:
-                # If multiple args, pass the dict (second arg)
-                return original_func(args[1])
-            elif kwargs:
-                # Handle kwargs-only calls
-                return original_func(**kwargs)
-            else:
-                return original_func()
-        except TypeError as e:
-            logger.error(f"Error calling {original_name}: {e}")
-            # Fallback: try passing first arg only
-            try:
-                return original_func(args[0] if args else None)
-            except Exception as e2:
-                logger.error(f"Fallback also failed for {original_name}: {e2}")
-                raise
+            d = mod.load()
+            allowed = set(getattr(mod, "MAIN_OWNER", 0))
+            allowed.update(getattr(mod, "SUPER_ADMINS", []))
+            allowed.update(d.get("owners", []))
+            allowed.update(d.get("admins", []))
+            if int(chat_id) in allowed:
+                return None
+        except Exception:
+            pass
+        return None
 
-    async def compat_wrapper_async(*args, **kwargs):
-        """Handle both old (uid) and new (dict) signatures for async functions."""
-        try:
-            # Try calling with first positional argument
-            if len(args) == 1:
-                result = original_func(args[0])
-            elif len(args) >= 2:
-                # If multiple args, pass the dict (second arg)
-                result = original_func(args[1])
-            elif kwargs:
-                result = original_func(**kwargs)
-            else:
-                result = original_func()
-            
-            if asyncio.iscoroutine(result):
-                return await result
-            return result
-        except TypeError as e:
-            logger.error(f"Error calling {original_name}: {e}")
-            # Fallback: try passing first arg only
-            try:
-                result = original_func(args[0] if args else None)
-                if asyncio.iscoroutine(result):
-                    return await result
-                return result
-            except Exception as e2:
-                logger.error(f"Fallback also failed for {original_name}: {e2}")
-                raise
-
-    try:
-        if is_async:
-            setattr(mod, original_name, compat_wrapper_async)
-        else:
-            setattr(mod, original_name, compat_wrapper_sync)
-        logger.info(f"Patched {original_name} ({'async' if is_async else 'sync'})")
-    except Exception as e:
-        logger.error(f"Error patching {original_name}: {e}", exc_info=True)
+    mod.send_fire_effect_private = safe_fire
 
 
-# Apply fixes on import
+def _apply_start_panel_fix():
+    mod = _load_bot_module()
+    if mod is None:
+        return
+    _patch_fire_effect(mod)
+    _patch_panel_functions(mod)
+
+
 _apply_start_panel_fix()
